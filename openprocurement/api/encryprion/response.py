@@ -1,6 +1,4 @@
 from pyramid.response import Response, FileIter, _BLOCK_SIZE
-import mimetypes
-from os.path import getmtime, getsize
 
 
 class FileObjResponse(Response):

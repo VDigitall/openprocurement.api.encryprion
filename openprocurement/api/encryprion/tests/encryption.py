@@ -19,28 +19,29 @@ class EncryptionTest(unittest.TestCase):
         self.assertIn('key', response.json)
 
     def test_flow(self):
+        # Get key
         key = self.app.get('/').json['key']
+        # Encrypt file
         response = self.app.post('/encrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', 'Very important information'))]))
         encrypted_file = response.body
         self.assertEqual(response.status, '200 OK')
         self.assertNotEqual(encrypted_file, 'Very important information')
+        self.assertIn('EncryptionKey', response.headers)
+        self.assertEqual(key, response.headers['EncryptionKey'])
+        # Decrypt file
         response = self.app.post('/decrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', encrypted_file))]))
         decrypted_file = response.body
         self.assertEqual(response.status, '200 OK')
         self.assertEqual(decrypted_file, 'Very important information')
+        self.assertIn('EncryptionKey', response.headers)
+        self.assertEqual(key, response.headers['EncryptionKey'])
 
+    def test_invalid_encrypt(self):
+        key = self.app.get('/').json['key']
         # Encrypt without file
         response = self.app.post('/encrypt_file', collections.OrderedDict([('key', key)]), status=400)
         self.assertEqual(response.status, '400 Bad Request')
         self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nMissed file.\n\n')
-        # Decrypt decrypted_file
-        response = self.app.post('/decrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', decrypted_file))]), status=400)
-        self.assertEqual(response.status, '400 Bad Request')
-        self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nFailed to decrypt message\n\n')
-        # Decrypt without file
-        response = self.app.post('/decrypt_file', collections.OrderedDict([('key', key)]), status=400)
-        self.assertEqual(response.status, '400 Bad Request')
-        self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nMissed encrypted file.\n\n')
         # Encrypt with empty key
         response = self.app.post('/encrypt_file', collections.OrderedDict([('key', ''), ('file', webtest.forms.Upload('filename.txt', 'Very important information'))]), status=400)
         self.assertIn(response.status, '400 Bad Request')
@@ -49,10 +50,20 @@ class EncryptionTest(unittest.TestCase):
         response = self.app.post('/encrypt_file', collections.OrderedDict([('key', 'a514cdc3c198421de6a746961d34f20147b7614c85a39297ffb07570b28hello'), ('file', webtest.forms.Upload('filename.txt', 'Very important information'))]), status=400)
         self.assertIn(response.status, '400 Bad Request')
         self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nInvalid key: Non-hexadecimal digit found.\n\n')
-        # Encrypt without key
-        response = self.app.post('/encrypt_file', collections.OrderedDict([('file', webtest.forms.Upload('filename.txt', 'Very important information'))]), status=400)
-        self.assertIn(response.status, '400 Bad Request')
-        self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nKey missed.\n\n')
+
+    def test_invalid_decrypt(self):
+        key = self.app.get('/').json['key']
+        encrypted_file = self.app.post('/encrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', 'Very important information'))])).body
+        decrypted_file = self.app.post('/decrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', encrypted_file))])).body
+
+        # Decrypt decrypted_file
+        response = self.app.post('/decrypt_file', collections.OrderedDict([('key', key), ('file', webtest.forms.Upload('filename.txt', decrypted_file))]), status=400)
+        self.assertEqual(response.status, '400 Bad Request')
+        self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nFailed to decrypt message\n\n')
+        # Decrypt without file
+        response = self.app.post('/decrypt_file', collections.OrderedDict([('key', key)]), status=400)
+        self.assertEqual(response.status, '400 Bad Request')
+        self.assertEqual(response.body, '400 Bad Request\n\nThe server could not comply with the request since it is either malformed or otherwise incorrect.\n\n\nMissed encrypted file.\n\n')
         # Decrypt with empty key
         response = self.app.post('/decrypt_file', collections.OrderedDict([('key', ''), ('file', webtest.forms.Upload('filename.txt', encrypted_file))]), status=400)
         self.assertIn(response.status, '400 Bad Request')
