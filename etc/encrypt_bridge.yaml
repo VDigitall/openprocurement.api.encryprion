@@ -1,0 +1,45 @@
+main:
+  tenders_api_server: https://lb.api-sandbox.openprocurement.org
+  tenders_api_version: "0"
+  public_tenders_api_server: https://lb.api-sandbox.openprocurement.org
+  couch_url: http://127.0.0.1:5984/
+  public_db: public_db
+  retrievers_params:
+    down_requests_sleep: 5
+    up_requests_sleep: 1
+    up_wait_sleep: 30
+    queue_size: 101
+version: 1
+
+formatters:
+  simple:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: simple
+    stream: ext://sys.stdout
+
+  journal:
+    class: ExtendedJournalHandler.ExtendedJournalHandler
+    level: INFO
+    SYSLOG_IDENTIFIER: ENCRYPT_DATA_BRIDGE
+    TENDERS_API_VERSION: "0"
+    TENDERS_API_URL: https://lb.api-sandbox.openprocurement.org
+
+loggers:
+  openprocurement.api.encryprion.databridge:
+    handlers: [console, journal]
+    propagate: no
+    level: DEBUG
+
+  openprocurement_client.sync:
+    handlers: [console, journal]
+    propagate: no
+    level: INFO
+
+  "":
+    handlers: [console, journal]
+    level: DEBUG
