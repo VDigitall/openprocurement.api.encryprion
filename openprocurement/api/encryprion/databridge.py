@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import io
 import argparse
 from yaml import load
 from urlparse import urljoin
@@ -9,6 +10,7 @@ from openprocurement_client.client import TendersClient
 from .utils import decrypt_file
 import errno
 from socket import error
+from StringIO import StringIO
 from requests.exceptions import ConnectionError, MissingSchema
 
 from gevent import monkey
@@ -20,8 +22,8 @@ try:
 except ImportError:
     pass
 
-BID_DOCUMENTS_DECRYPT_STATUS = 'active.qualification'
-# BID_DOCUMENTS_DECRYPT_STATUS = 'active.qualification.decrypt'
+# BID_DOCUMENTS_DECRYPT_STATUS = 'active.qualification'
+BID_DOCUMENTS_DECRYPT_STATUS = 'active.qualification.decrypt'
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,6 @@ class EncryptDataBridge(object):
         try:
             self.client = TendersClient(host_url=self.api_host,
                                         api_version=self.api_version, key='')
-        except MissingSchema:
-            raise DataBridgeConfigError('In config dictionary empty or missing \
-                \'tenders_api_server\'')
         except ConnectionError as e:
             raise e
 
@@ -62,10 +61,31 @@ class EncryptDataBridge(object):
         if 'documents' in bid:
             for document in bid.documents:
                 if 'secret_key' in document:
-                    encrypted_file = self.client.get_file(tender, document.url)
+                    if len(document.secret_key) != 64:
+                        logger.info('Invalid length decrypt key for document {} bid {} tender {}'.format(
+                            document.id, bid.id, tender.data.id
+                        ))
+                        continue
+                    try:
+                        document.secret_key.decode('hex')
+                    except TypeError:
+                        logger.info('Invalid decrypt key: Non-hexadecimal digit found. For document {} bid {} tender {}'.format(
+                            document.id, bid.id, tender.data.id
+                        ))
+                        continue
+
+                    # TODO: try block for download encrypted document.
+                    bid_file = self.client.get_file(tender, document.url)
+                    encrypted_file = StringIO()
+                    encrypted_file.write(bid_file[0])
+                    encrypted_file.seek(0)
+
+                    # TODO: try block for decrypt exception
                     decrypted_file = decrypt_file(document.secret_key,
                                                   encrypted_file)
-                    self.client.update_bid_document(decrypt_file, tender,
+                    decrypted_file.name = bid_file[1]
+                    # TODO: check update status
+                    self.client.update_bid_document(decrypted_file, tender,
                                                     bid.id, document.id)
                     logger.info(
                         'Decrypt file {} of bid {} and updated.'.format(
@@ -77,7 +97,7 @@ class EncryptDataBridge(object):
                                                               bid.id),
                     extra={'MESSAGE_ID': 'decrypted_bid'})
 
-    def get_teders_list(self):
+    def get_tenders_list(self):
         for item in self.client.get_tenders(
             feed=None,
             params={'mode': '_all_', 'opt_fields': 'status'},
@@ -90,25 +110,25 @@ class EncryptDataBridge(object):
                     extra={'MESSAGE_ID': 'encrypt_bridge_start_bridge'})
         logger.info('Start data sync...',
                     extra={'MESSAGE_ID': 'encrypt_bridge_data_sync'})
-        for tender_id in self.get_teders_list():
+        for tender_id in self.get_tenders_list():
             tender = self.client.get_tender(tender_id)
-            print tender.data.id
-            logger.info('Getting tender {} with status({})'
+            logger.info('Getting tender {} with status ({})'
                         .format(tender_id, BID_DOCUMENTS_DECRYPT_STATUS))
             bids = self.client._get_tender_resource_list(tender, 'bids')
-            for bid in bids.data:
+            for bid in bids:
                 self.decrypt_bid_files(tender, bid)
             tender = self.client.patch_tender({
                 'data': {
-                    'id': tender.data.id,
+                    'id': tender_id,
                     'status': 'active.qualification'
                 }
             })
-            if tender.status == 'active.qualification':
+            if tender.data.status == 'active.qualification':
                 logger.info(
                     'Patch tender {} status (active.qualification)'.format(
-                        tender.id
+                        tender.data.id
                     ), extra={'MESSAGE_ID': 'patch_tender_status'})
+            # TODO: else block when tender status was not changed.
 
 
 def main():

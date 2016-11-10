@@ -20,8 +20,11 @@ lib64/
 parts/
 sdist/
 var/
+bin/
+src/
 *.egg-info/
 .installed.cfg
+.mr.developer.cfg
 *.egg
 
 # PyInstaller
@@ -44,6 +47,7 @@ nosetests.xml
 coverage.xml
 *,cover
 .hypothesis/
+cover/
 
 # Translations
 *.mo
